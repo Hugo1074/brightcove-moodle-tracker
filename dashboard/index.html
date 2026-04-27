@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard de Engajamento - Equalis</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --bg-card: #1a1d28;
+    --bg-hover: #232634;
+    --border: #2a2e3d;
+    --text: #e4e6eb;
+    --text-dim: #9ba1b3;
+    --accent: #ef4444;
+    --good: #10b981;
+    --warn: #f59e0b;
+    --bad: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; min-height: 100vh; }
+  .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 24px; font-weight: 700; }
+  header .meta { color: var(--text-dim); font-size: 13px; text-align: right; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .summary-card { background: var(--bg-card); border: 1px solid var(--border); padding: 16px; border-radius: 8px; }
+  .summary-card .label { color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .summary-card .value { font-size: 28px; font-weight: 700; margin-top: 6px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 24px; flex-wrap: wrap; }
+  .tab { background: transparent; border: 0; color: var(--text-dim); padding: 12px 20px; cursor: pointer; font-size: 14px; font-weight: 500; border-bottom: 2px solid transparent; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .controls { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  input[type="text"], select { background: var(--bg-card); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 13px; min-width: 200px; }
+  .controls .count { color: var(--text-dim); font-size: 13px; margin-left: auto; }
+  table { width: 100%; border-collapse: collapse; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  thead th { background: var(--bg-hover); color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; text-align: left; padding: 12px; border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; white-space: nowrap; }
+  thead th:hover { color: var(--text); }
+  thead th.sorted-asc::after { content: " up"; color: var(--accent); }
+  thead th.sorted-desc::after { content: " dn"; color: var(--accent); }
+  tbody td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  tbody tr:hover { background: var(--bg-hover); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge-good { background: rgba(16,185,129,0.15); color: var(--good); }
+  .badge-warn { background: rgba(245,158,11,0.15); color: var(--warn); }
+  .badge-bad { background: rgba(239,68,68,0.15); color: var(--bad); }
+  .progress { display: inline-block; width: 80px; height: 6px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; vertical-align: middle; margin-right: 8px; }
+  .progress-fill { height: 100%; background: var(--accent); }
+  .empty { text-align: center; padding: 60px 20px; color: var(--text-dim); }
+  .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 16px; align-items: center; }
+  .pagination button { background: var(--bg-card); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .loader { text-align: center; padding: 80px 20px; color: var(--text-dim); }
+  .text-mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--text-dim); }
+  .num { font-variant-numeric: tabular-nums; text-align: right; }
+  th.num { text-align: right; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div>
+      <h1>Engajamento de Videos - Equalis</h1>
+      <div class="text-mono" id="period">-</div>
+    </div>
+    <div class="meta">
+      Ultima atualizacao: <span id="updatedAt">-</span><br>
+      <span id="recordCount">-</span>
+    </div>
+  </header>
+  <div id="loader" class="loader">Carregando dados...</div>
+  <div id="content" style="display:none">
+    <div class="summary-grid" id="summaryGrid"></div>
+    <nav class="tabs">
+      <button class="tab active" data-panel="students">Por aluno</button>
+      <button class="tab" data-panel="videos">Por video</button>
+      <button class="tab" data-panel="courses">Por curso</button>
+      <button class="tab" data-panel="risk">Alunos em risco</button>
+    </nav>
+    <section class="panel active" id="panel-students">
+      <div class="controls">
+        <input type="text" id="studentSearch" placeholder="Buscar por nome ou email...">
+        <span class="count" id="studentCount"></span>
+      </div>
+      <table id="studentTable">
+        <thead><tr>
+          <th data-sort="fullname">Aluno</th>
+          <th data-sort="email">Email</th>
+          <th data-sort="videos" class="num">Videos</th>
+          <th data-sort="hours" class="num">Horas assistidas</th>
+          <th data-sort="completed" class="num">100% completos</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="pagination" id="studentPagination"></div>
+    </section>
+    <section class="panel" id="panel-videos">
+      <div class="controls">
+        <input type="text" id="videoSearch" placeholder="Buscar por titulo ou curso...">
+        <span class="count" id="videoCount"></span>
+      </div>
+      <table id="videoTable">
+        <thead><tr>
+          <th data-sort="name">Video</th>
+          <th data-sort="course">Curso (Moodle)</th>
+          <th data-sort="viewers" class="num">Alunos</th>
+          <th data-sort="totalSeconds" class="num">Horas totais</th>
+          <th data-sort="avgPercent" class="num">% medio</th>
+          <th data-sort="completionRate" class="num">% concluido</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="pagination" id="videoPagination"></div>
+    </section>
+    <section class="panel" id="panel-courses">
+      <div class="controls">
+        <input type="text" id="courseSearch" placeholder="Buscar por curso...">
+        <span class="count" id="courseCount"></span>
+      </div>
+      <table id="courseTable">
+        <thead><tr>
+          <th data-sort="name">Curso</th>
+          <th data-sort="videos" class="num">Videos</th>
+          <th data-sort="students" class="num">Alunos</th>
+          <th data-sort="hours" class="num">Horas totais</th>
+          <th data-sort="avgPercent" class="num">% medio</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+    <section class="panel" id="panel-risk">
+      <div class="controls">
+        <select id="riskThreshold">
+          <option value="30">Risco: menos de 30%</option>
+          <option value="50" selected>Risco: menos de 50%</option>
+          <option value="70">Risco: menos de 70%</option>
+        </select>
+        <select id="riskMinVideos">
+          <option value="1">Min 1 video</option>
+          <option value="3" selected>Min 3 videos</option>
+          <option value="5">Min 5 videos</option>
+        </select>
+        <span class="count" id="riskCount"></span>
+      </div>
+      <table id="riskTable">
+        <thead><tr>
+          <th data-sort="fullname">Aluno</th>
+          <th data-sort="email">Email</th>
+          <th data-sort="videos" class="num">Videos</th>
+          <th data-sort="completionRate" class="num">% medio</th>
+          <th>Risco</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </div>
+</div>
+<script>
+const fmt = {
+  hours: s => (s / 3600).toFixed(1) + 'h',
+  pct: n => Math.round(n) + '%',
+  num: n => new Intl.NumberFormat('pt-BR').format(n),
+  date: s => new Date(s).toLocaleString('pt-BR'),
+};
+let DATA = null;
+let STUDENT_AGG = [], VIDEO_AGG = [], COURSE_AGG = [];
+const PAGE_SIZE = 50;
+const state = {
+  students: { sort: 'hours', dir: 'desc', page: 0, search: '' },
+  videos: { sort: 'totalSeconds', dir: 'desc', page: 0, search: '' },
+  courses: { sort: 'hours', dir: 'desc', search: '' },
+  risk: { sort: 'completionRate', dir: 'asc', threshold: 50, minVideos: 3 },
+};
+async function load() {
+  try {
+    const res = await fetch('data.json?t=' + Date.now());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    DATA = await res.json();
+    init();
+  } catch (e) {
+    document.getElementById('loader').innerHTML = 'Erro: ' + e.message;
+  }
+}
+function init() {
+  document.getElementById('period').textContent = 'Periodo: ' + DATA.fromDate + ' a ' + DATA.toDate;
+  document.getElementById('updatedAt').textContent = fmt.date(DATA.generatedAt);
+  document.getElementById('recordCount').textContent = fmt.num(DATA.summary.totalRows) + ' registros';
+  renderSummary();
+  computeAggregates();
+  setupTabs();
+  setupSearch();
+  setupSorting();
+  renderAll();
+  document.getElementById('loader').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+}
+function renderSummary() {
+  const s = DATA.summary;
+  const totalSeconds = (DATA.rows || []).reduce((a, r) => a + (r.seconds || 0), 0);
+  const cards = [
+    { label: 'Alunos engajados', value: fmt.num(s.identifiedStudents) },
+    { label: 'Videos com trafego', value: fmt.num(s.uniqueVideos) },
+    { label: 'Horas assistidas', value: fmt.hours(totalSeconds) },
+    { label: 'Videos no Moodle', value: fmt.num(s.mappedVideos) + ' / ' + fmt.num(s.uniqueVideos) },
+  ];
+  document.getElementById('summaryGrid').innerHTML = cards.map(c =>
+    '<div class="summary-card"><div class="label">' + c.label + '</div><div class="value">' + c.value + '</div></div>'
+  ).join('');
+}
+function computeAggregates() {
+  const byUser = {};
+  for (const r of (DATA.rows || [])) {
+    if (!r.viewer || r.viewer === '(unknown)') continue;
+    const u = byUser[r.viewer] = byUser[r.viewer] || { username: r.viewer, videos: 0, totalSeconds: 0, totalPercent: 0, completed: 0 };
+    u.videos += 1;
+    u.totalSeconds += r.seconds || 0;
+  }
+  STUDENT_AGG = Object.values(byUser).map(u => {
+    const m = (DATA.users || {})[u.username] || {};
+    return Object.assign({}, u, {
+      fullname: m.fullname || u.username,
+      email: m.email || u.username,
+      hours: u.totalSeconds / 3600,
+      completionRate: u.videos > 0 ? u.totalPercent / u.videos : 0
+    });
+  });
+  const byVideo = {};
+  for (const r of (DATA.rows || [])) {
+    const v = byVideo[r.videoId] = byVideo[r.videoId] || { id: r.videoId, viewers: new Set(), totalSeconds: 0, count: 0 };
+    v.viewers.add(r.viewer);
+    v.totalSeconds += r.seconds || 0;
+    v.count += 1;
+  }
+  // Add stats from videoStats (per-video aggregates without viewer)
+  for (const [id, stats] of Object.entries(DATA.videoStats || {})) {
+    if (!byVideo[id]) byVideo[id] = { id: id, viewers: new Set(), totalSeconds: 0, count: 0 };
+    byVideo[id].totalSeconds = stats.seconds || byVideo[id].totalSeconds;
+    byVideo[id].avgPercent = stats.percent || 0;
+    byVideo[id].eng100 = stats.eng100 || 0;
+    byVideo[id].plays = stats.plays || 0;
+  }
+  VIDEO_AGG = Object.values(byVideo).map(v => {
+    const meta = (DATA.videos || {})[v.id] || {};
+    const ctx = (DATA.videoMap || {})[v.id] || {};
+    return {
+      id: v.id,
+      name: meta.name || ('video ' + v.id),
+      course: ctx.courseName || '-',
+      bookName: ctx.bookName || '',
+      viewers: v.viewers.size,
+      totalSeconds: v.totalSeconds,
+      avgPercent: v.avgPercent || 0,
+      completionRate: v.plays > 0 ? (v.eng100 / v.plays) * 100 : 0,
+    };
+  });
+  const byCourse = {};
+  for (const v of VIDEO_AGG) {
+    if (!v.course || v.course === '-') continue;
+    const c = byCourse[v.course] = byCourse[v.course] || { name: v.course, videos: 0, students: new Set(), hours: 0, totalPercent: 0, count: 0 };
+    c.videos += 1;
+    c.hours += v.totalSeconds / 3600;
+    c.totalPercent += v.avgPercent;
+    c.count += 1;
+  }
+  const courseStudents = {};
+  for (const r of (DATA.rows || [])) {
+    const ctx = (DATA.videoMap || {})[r.videoId];
+    if (!ctx || !ctx.courseName) continue;
+    courseStudents[ctx.courseName] = courseStudents[ctx.courseName] || new Set();
+    courseStudents[ctx.courseName].add(r.viewer);
+  }
+  COURSE_AGG = Object.values(byCourse).map(c => ({
+    name: c.name, videos: c.videos,
+    students: (courseStudents[c.name] || new Set()).size,
+    hours: c.hours,
+    avgPercent: c.count > 0 ? c.totalPercent / c.count : 0,
+  }));
+}
+function setupTabs() {
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('panel-' + btn.dataset.panel).classList.add('active');
+    });
+  });
+}
+function setupSearch() {
+  document.getElementById('studentSearch').addEventListener('input', e => { state.students.search = e.target.value.toLowerCase(); state.students.page = 0; renderStudents(); });
+  document.getElementById('videoSearch').addEventListener('input', e => { state.videos.search = e.target.value.toLowerCase(); state.videos.page = 0; renderVideos(); });
+  document.getElementById('courseSearch').addEventListener('input', e => { state.courses.search = e.target.value.toLowerCase(); renderCourses(); });
+  document.getElementById('riskThreshold').addEventListener('change', e => { state.risk.threshold = parseInt(e.target.value, 10); renderRisk(); });
+  document.getElementById('riskMinVideos').addEventListener('change', e => { state.risk.minVideos = parseInt(e.target.value, 10); renderRisk(); });
+}
+function setupSorting() {
+  document.querySelectorAll('thead th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const tableId = th.closest('table').id;
+      const key = tableId.replace('Table', '');
+      const sortKey = th.dataset.sort;
+      if (state[key].sort === sortKey) state[key].dir = state[key].dir === 'asc' ? 'desc' : 'asc';
+      else { state[key].sort = sortKey; state[key].dir = 'desc'; }
+      renderAll();
+    });
+  });
+}
+function sortRows(rows, sortKey, dir) {
+  const sign = dir === 'asc' ? 1 : -1;
+  return rows.slice().sort((a, b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    if (typeof av === 'string') return av.localeCompare(bv) * sign;
+    return ((av || 0) - (bv || 0)) * sign;
+  });
+}
+function updateSortHeaders(tableId, sortKey, dir) {
+  document.querySelectorAll('#' + tableId + ' thead th').forEach(th => {
+    th.classList.remove('sorted-asc', 'sorted-desc');
+    if (th.dataset.sort === sortKey) th.classList.add(dir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+  });
+}
+function paginate(rows, page) { return rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE); }
+function renderPagination(id, total, page, onChange) {
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const c = document.getElementById(id);
+  if (totalPages <= 1) { c.innerHTML = ''; return; }
+  c.innerHTML = '<button ' + (page === 0 ? 'disabled' : '') + ' data-act="prev">Anterior</button><span>Pagina ' + (page + 1) + ' de ' + totalPages + '</span><button ' + (page >= totalPages - 1 ? 'disabled' : '') + ' data-act="next">Proxima</button>';
+  c.querySelectorAll('button').forEach(b => b.addEventListener('click', () => onChange(b.dataset.act === 'next' ? page + 1 : page - 1)));
+}
+function renderAll() { renderStudents(); renderVideos(); renderCourses(); renderRisk(); }
+function progressBar(pct) {
+  const p = Math.max(0, Math.min(100, pct));
+  return '<span class="progress"><span class="progress-fill" style="width:' + p + '%"></span></span>' + fmt.pct(p);
+}
+function escape(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function renderStudents() {
+  const s = state.students;
+  let rows = STUDENT_AGG.filter(r => !s.search || r.fullname.toLowerCase().includes(s.search) || r.email.toLowerCase().includes(s.search));
+  rows = sortRows(rows, s.sort, s.dir);
+  document.getElementById('studentCount').textContent = fmt.num(rows.length) + ' alunos';
+  updateSortHeaders('studentTable', s.sort, s.dir);
+  const visible = paginate(rows, s.page);
+  const tbody = document.querySelector('#studentTable tbody');
+  if (visible.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">Sem dados de viewer ainda. Os dados aparecem 24-48h apos o tracking ser ativado.</td></tr>';
+  } else {
+    tbody.innerHTML = visible.map(r => '<tr><td>' + escape(r.fullname) + '</td><td class="text-mono">' + escape(r.email) + '</td><td class="num">' + fmt.num(r.videos) + '</td><td class="num">' + fmt.hours(r.totalSeconds) + '</td><td class="num">' + fmt.num(r.completed) + '</td></tr>').join('');
+  }
+  renderPagination('studentPagination', rows.length, s.page, p => { s.page = p; renderStudents(); });
+}
+function renderVideos() {
+  const s = state.videos;
+  let rows = VIDEO_AGG.filter(r => !s.search || r.name.toLowerCase().includes(s.search) || (r.course || '').toLowerCase().includes(s.search));
+  rows = sortRows(rows, s.sort, s.dir);
+  document.getElementById('videoCount').textContent = fmt.num(rows.length) + ' videos';
+  updateSortHeaders('videoTable', s.sort, s.dir);
+  const visible = paginate(rows, s.page);
+  const tbody = document.querySelector('#videoTable tbody');
+  if (visible.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">Nenhum video encontrado.</td></tr>';
+  } else {
+    tbody.innerHTML = visible.map(r => '<tr><td>' + escape(r.name) + '<br><span class="text-mono">' + r.id + '</span></td><td>' + escape(r.course) + '</td><td class="num">' + fmt.num(r.viewers) + '</td><td class="num">' + fmt.hours(r.totalSeconds) + '</td><td class="num">' + progressBar(r.avgPercent) + '</td><td class="num">' + progressBar(r.completionRate) + '</td></tr>').join('');
+  }
+  renderPagination('videoPagination', rows.length, s.page, p => { s.page = p; renderVideos(); });
+}
+function renderCourses() {
+  const s = state.courses;
+  let rows = COURSE_AGG.filter(r => !s.search || r.name.toLowerCase().includes(s.search));
+  rows = sortRows(rows, s.sort, s.dir);
+  document.getElementById('courseCount').textContent = fmt.num(rows.length) + ' cursos';
+  updateSortHeaders('courseTable', s.sort, s.dir);
+  const tbody = document.querySelector('#courseTable tbody');
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">Nenhum curso mapeado ainda. O cruzamento Moodle precisa de ajuste.</td></tr>';
+  } else {
+    tbody.innerHTML = rows.map(r => '<tr><td>' + escape(r.name) + '</td><td class="num">' + fmt.num(r.videos) + '</td><td class="num">' + fmt.num(r.students) + '</td><td class="num">' + r.hours.toFixed(1) + 'h</td><td class="num">' + progressBar(r.avgPercent) + '</td></tr>').join('');
+  }
+}
+function renderRisk() {
+  const s = state.risk;
+  let rows = STUDENT_AGG.filter(r => r.videos >= s.minVideos && r.completionRate < s.threshold).map(r => Object.assign({}, r, { riskLevel: r.completionRate < 20 ? 'high' : r.completionRate < 40 ? 'med' : 'low' }));
+  rows = sortRows(rows, s.sort, s.dir);
+  document.getElementById('riskCount').textContent = fmt.num(rows.length) + ' alunos em risco';
+  updateSortHeaders('riskTable', s.sort, s.dir);
+  const tbody = document.querySelector('#riskTable tbody');
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">Sem dados de viewer ainda.</td></tr>';
+  } else {
+    tbody.innerHTML = rows.map(r => {
+      const badge = r.riskLevel === 'high' ? '<span class="badge badge-bad">ALTO</span>' : r.riskLevel === 'med' ? '<span class="badge badge-warn">MEDIO</span>' : '<span class="badge badge-good">BAIXO</span>';
+      return '<tr><td>' + escape(r.fullname) + '</td><td class="text-mono">' + escape(r.email) + '</td><td class="num">' + fmt.num(r.videos) + '</td><td class="num">' + progressBar(r.completionRate) + '</td><td>' + badge + '</td></tr>';
+    }).join('');
+  }
+}
+load();
+</script>
+</body>
+</html>
