@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Coletor diário de engajamento Brightcove + Moodle.
+ * Coletor diario de engajamento Brightcove + Moodle.
  */
 
 import { writeFile, mkdir } from 'node:fs/promises';
@@ -46,8 +46,6 @@ async function bcToken() {
 }
 
 async function bcAnalyticsByVideoViewer(token) {
-  // A dimensao viewer aceita apenas um subset de metricas.
-  // Usamos as mais essenciais que sao seguras.
   const fields = ['video_view', 'video_seconds_viewed'].join(',');
   const all = [];
   let offset = 0;
@@ -75,7 +73,6 @@ async function bcAnalyticsByVideoViewer(token) {
 }
 
 async function bcAnalyticsByVideo(token) {
-  // Para os campos de engagement (que nao funcionam com viewer), fazemos um agregado por video apenas.
   const fields = [
     'video_view',
     'video_seconds_viewed',
@@ -121,7 +118,6 @@ async function bcVideos(token) {
     if (!res.ok) throw new Error(`CMS ${res.status}: ${await res.text()}`);
     const batch = await res.json();
     all.push(...batch);
-    console.log(`  videos offset=${offset} got=${batch.length}`);
     if (batch.length < limit) break;
     offset += limit;
     if (offset > 50000) break;
@@ -178,41 +174,79 @@ async function moodleCourseContents(courseId) {
   return await moodle('core_course_get_contents', { courseid: courseId });
 }
 
+async function fetchChapterHtml(fileurl) {
+  // fileurl is like https://.../webservice/pluginfile.php/.../mod_book/chapter/XXXX/index.html
+  // We must append ?token=MOODLE_TOKEN to authenticate.
+  const sep = fileurl.indexOf('?') === -1 ? '?' : '&';
+  const url = `${fileurl}${sep}token=${MOODLE_TOKEN}`;
+  const res = await fetch(url);
+  if (!res.ok) return '';
+  return await res.text();
+}
+
+async function processInBatches(items, batchSize, worker) {
+  const results = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const out = await Promise.all(batch.map(worker));
+    results.push(...out);
+  }
+  return results;
+}
+
 async function buildVideoMap(courses) {
   const map = {};
   let processed = 0;
+  let totalChapters = 0;
   for (const course of courses) {
     if (!course.visible) continue;
     try {
       const sections = await moodleCourseContents(course.id);
+      // Coleta todos os fileurls de capitulos do curso
+      const chapterTasks = [];
       for (const section of sections) {
         for (const mod of (section.modules || [])) {
           if (mod.modname !== 'book') continue;
           for (const content of (mod.contents || [])) {
-            if (content.content && typeof content.content === 'string') {
-              const matches = content.content.matchAll(/videoId=(\d+)/g);
-              for (const m of matches) {
-                const vid = m[1];
-                if (!map[vid]) {
-                  map[vid] = {
-                    courseId: course.id,
-                    courseName: course.fullname,
-                    courseShort: course.shortname,
-                    bookId: mod.id,
-                    bookName: mod.name,
-                  };
-                }
-              }
+            if (content.type === 'file' && content.fileurl && content.filename === 'index.html') {
+              chapterTasks.push({
+                fileurl: content.fileurl,
+                bookId: mod.id,
+                bookName: mod.name,
+                chapterTitle: content.content || '',
+              });
             }
           }
         }
       }
+      // Baixa em paralelo (8 por vez)
+      await processInBatches(chapterTasks, 8, async (task) => {
+        const html = await fetchChapterHtml(task.fileurl);
+        const matches = html.matchAll(/videoId=(\d+)/g);
+        for (const m of matches) {
+          const vid = m[1];
+          if (!map[vid]) {
+            map[vid] = {
+              courseId: course.id,
+              courseName: course.fullname,
+              courseShort: course.shortname,
+              bookId: task.bookId,
+              bookName: task.bookName,
+              chapterTitle: task.chapterTitle,
+            };
+          }
+        }
+      });
+      totalChapters += chapterTasks.length;
       processed++;
-      if (processed % 10 === 0) console.log(`  cursos processados: ${processed}/${courses.length}`);
+      if (processed % 5 === 0) {
+        console.log(`  cursos: ${processed}/${courses.length} | chapters: ${totalChapters} | videos mapeados: ${Object.keys(map).length}`);
+      }
     } catch (e) {
       console.warn(`  falha curso ${course.id}: ${e.message}`);
     }
   }
+  console.log(`  TOTAL: ${processed} cursos, ${totalChapters} capitulos, ${Object.keys(map).length} videos mapeados`);
   return map;
 }
 
@@ -260,9 +294,8 @@ async function main() {
   const courses = await moodleCourses();
   console.log(`  total cursos: ${courses.length}`);
 
-  console.log('Mapeando videoId -> atividade Moodle (pode demorar)...');
+  console.log('Mapeando videoId -> atividade Moodle (baixando HTML dos capitulos)...');
   const videoMap = await buildVideoMap(courses);
-  console.log(`  videos mapeados: ${Object.keys(videoMap).length}`);
 
   console.log('Coletando dados de alunos Moodle...');
   const usernames = [...new Set(byViewer.map(r => r.viewer).filter(u => u && u !== '(unknown)'))];
