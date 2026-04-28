@@ -1,0 +1,25 @@
+name: Populate fields
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'DRY_RUN (1 = simular sem patch)'
+        required: false
+        default: '0'
+
+jobs:
+  populate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run populate-fields
+        env:
+          BC_CLIENT_ID: ${{ secrets.BC_CLIENT_ID }}
+          BC_CLIENT_SECRET: ${{ secrets.BC_CLIENT_SECRET }}
+          BC_ACCOUNT_ID: ${{ secrets.BC_ACCOUNT_ID }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: node dashboard/populate-fields.mjs
