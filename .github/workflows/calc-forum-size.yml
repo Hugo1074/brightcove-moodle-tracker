@@ -1,0 +1,25 @@
+name: Calc forum size
+
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: 'Anos separados por virgula (ex: 2020,2021,2022,2023,2024)'
+        required: false
+        default: '2020,2021,2022,2023,2024'
+
+jobs:
+  calc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run calc-forum-size
+        env:
+          BC_CLIENT_ID: ${{ secrets.BC_CLIENT_ID }}
+          BC_CLIENT_SECRET: ${{ secrets.BC_CLIENT_SECRET }}
+          BC_ACCOUNT_ID: ${{ secrets.BC_ACCOUNT_ID }}
+          YEARS: ${{ inputs.years }}
+        run: node dashboard/calc-forum-size.mjs
