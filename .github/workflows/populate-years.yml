@@ -1,0 +1,30 @@
+name: Populate ano_de_grava_o
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'DRY_RUN (1 = simular sem patch)'
+        required: false
+        default: '0'
+      only_year:
+        description: 'Filtrar so um ano (ex: 2026), vazio = todos'
+        required: false
+        default: ''
+
+jobs:
+  populate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run populate-years
+        env:
+          BC_CLIENT_ID: ${{ secrets.BC_CLIENT_ID }}
+          BC_CLIENT_SECRET: ${{ secrets.BC_CLIENT_SECRET }}
+          BC_ACCOUNT_ID: ${{ secrets.BC_ACCOUNT_ID }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          ONLY_YEAR: ${{ inputs.only_year }}
+        run: node dashboard/populate-years.mjs
