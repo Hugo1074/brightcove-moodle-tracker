@@ -1,0 +1,19 @@
+name: Mark Dermato ATIVOS
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  mark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run mark-ativos
+        env:
+          BC_CLIENT_ID: ${{ secrets.BC_CLIENT_ID }}
+          BC_CLIENT_SECRET: ${{ secrets.BC_CLIENT_SECRET }}
+          BC_ACCOUNT_ID: ${{ secrets.BC_ACCOUNT_ID }}
+        run: node dermato-ativos/mark-ativos.mjs
